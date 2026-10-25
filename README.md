@@ -83,7 +83,7 @@ fixed with a fifth rule, and re-tested.**
 - **IP addressing & DHCP** — per-VLAN scopes, with a reserved range kept free for static assignments
 - **Wireless configuration** — binding SSIDs to VLANs, band selection trade-offs, guest client isolation
 - **Trunking** — tagged vs. untagged traffic; APs carrying multiple VLANs over a single uplink
-- **Firewall / ACL logic** — top-down first-match evaluation, implicit allow (Omada) vs. implicit deny (Cisco)
+- **Firewall / ACL logic** — top-down, first-match evaluation; designed around Omada's implicit *allow* (vs. the implicit *deny* used by Cisco ACLs)
 - **Stateful firewalling** — using return-traffic behaviour to build one-way trust with deny rules only
 - **Service discovery** — mDNS/Bonjour vs. SSDP/DIAL, and why multicast discovery doesn't cross VLANs
 - **Design trade-offs** — weighing security gain against day-to-day usability (the Roku decision)
