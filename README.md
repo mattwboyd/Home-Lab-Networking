@@ -73,7 +73,9 @@ themselves. Four deny rules plus a stateful firewall produce this — see
 Validated with baseline-and-blocked tests in [Phase 5](docs/05-validation.md) — which also
 surfaced a real gap: IoT devices could load the gateway's admin login page, because
 inter-VLAN rules don't cover traffic addressed *to* the gateway itself. **Found, explained,
-fixed with a fifth rule, and re-tested.**
+and fixed with a fifth rule** — whose first version then broke DNS for a real IoT device
+(a 3D printer). That regression was diagnosed and the rule narrowed until both checks passed:
+admin page blocked, normal traffic flowing.
 
 ---
 

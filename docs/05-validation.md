@@ -18,7 +18,9 @@ result needs a baseline showing the target *does* answer when it should.
 | IoT → Internet | `ping 8.8.8.8` from `RedLeader_IoT` | ✅ 0% loss |
 | IoT → Main device | `ping 192.168.0.126` from `RedLeader_IoT` | ✅ 100% loss — blocked |
 | IoT → gateway's other interfaces | `ping 192.168.0.1` and `192.168.30.1` from `RedLeader_IoT` | ⚠️ **Replies** — see [finding](#finding--iot-could-reach-the-gateway-itself-fixed) |
-| IoT → gateway management page | Browse `https://192.168.0.1` from `RedLeader_IoT` | ⚠️ Login page loaded → 🔧 fixed with Rule 5 → ✅ times out on `.0.1`, `.20.1` and `.30.1` |
+| IoT → gateway management page | Browse `https://192.168.0.1` from `RedLeader_IoT` | ⚠️ Login page loaded → 🔧 Rule 5 → ✅ times out on `.0.1` and `.20.1` |
+| IoT → gateway DNS and ping (regression check) | `nslookup google.com` and `ping 192.168.20.1` from `RedLeader_IoT` | ⚠️ First version of Rule 5 broke both → 🔧 narrowed to TCP → ✅ both work |
+| Real IoT device (Bambu Lab printer) | Printer cloud connection | ⚠️ Disconnected under first Rule 5 → ✅ connected with final rule |
 
 ---
 
@@ -103,36 +105,101 @@ the box that runs the whole network and attempt to brute-force it.
 | Option | Effect | Decision |
 |---|---|---|
 | Enable **Guest Network** on `RedLeader_IoT` | Blocks all private addresses — but also turns on client isolation (IoT devices can't talk to each other), may break local control from Main, and only covers Wi-Fi | Rejected — too broad |
-| Gateway ACL with destination **Gateway Management Page** | Blocks only the management interface; DHCP, DNS and internet untouched | **Chosen** — fixes exactly what was exposed |
+| Gateway ACL with destination **Gateway Management Page** | Targets traffic addressed to the gateway itself | **Chosen** — but see below; it took three attempts to get right |
 
-### Fix — Rule 5
+### Attempt 1 — "Gateway Management Page", all protocols
 
-![Gateway ACL list with Rule 5: Block IoT to Gateway Management, LAN to LAN, Deny, IoT-Net to Gateway Management Page](../screenshots/05-acl-rule5-gateway-mgmt.png)
+![Gateway ACL list with Rule 5: Block IoT to Gateway Management, LAN to LAN, Deny, All protocols, IoT-Net to Gateway Management Page](../screenshots/05-acl-rule5-gateway-mgmt.png)
 
-*Rule 5 — `Block IoT to Gateway Management`: LAN→LAN, Deny, all protocols, `IoT-Net` →
-**Gateway Management Page**.*
+*First version of Rule 5: LAN→LAN, Deny, **All** protocols, `IoT-Net` → Gateway Management
+Page.*
 
-### Re-test
+The admin page timed out from IoT, so this looked like a fix. **It wasn't a clean one.** A few
+days later the **Bambu Lab 3D printer** on the IoT network dropped its connection; disabling
+Rule 5 brought it straight back.
 
-From `RedLeader_IoT`, the management page now times out on **all three** gateway addresses —
-`https://192.168.0.1`, `https://192.168.30.1`, and `https://192.168.20.1` (IoT's own gateway,
-the address the old LAN→LAN rules never covered at all).
+**Diagnosis**, from a laptop on IoT with Rule 5 enabled:
+
+![nslookup via 192.168.20.1 times out, nslookup via 8.8.8.8 succeeds, ping 192.168.20.1 times out](../screenshots/05-rule5-dns-blocked.png)
+
+*DNS through the gateway (`192.168.20.1`) **times out**; the same lookup sent straight to
+`8.8.8.8` **works**; ping to the gateway **fails**. The rule was blocking DNS and ICMP to the
+gateway — not just the admin page.*
+
+Omada's own help text for this destination explains why: *"This option will block **all
+packets** sent from the specified source to the gateway's WAN and LAN interface IP."* With
+**Protocols: All**, that meant DNS (the gateway is IoT's DNS server, handed out by DHCP) and
+ping as well. The printer couldn't resolve its cloud servers.
+
+The earlier "after" tests missed this because they only checked that the *bad* traffic was
+blocked — and `ping 8.8.8.8` uses an IP address, so it never needed DNS.
+
+### Attempt 2 — IP-Port Group on ports 80 / 443 / 22 (didn't work)
+
+The obvious narrowing: a normal LAN→LAN rule from `IoT-Net` to an IP-Port Group
+(`Gateway-Mgmt`) holding the three gateway addresses on TCP 80, 443 and 22.
+
+![Rule 6 configuration: LAN to LAN, Deny, TCP, IoT-Net to IP-Port Group Gateway-Mgmt](../screenshots/05-rule6-attempt-config.png)
+
+![Browser on RedLeader_IoT still loading the ER605 login page at https://192.168.20.1 with the IP-Port Group rule active](../screenshots/05-rule6-attempt-login-loads.png)
+
+*With this rule active and the laptop confirmed on IoT (`192.168.20.116`), DNS and ping
+worked — but the **login page still loaded** on both `.20.1` and `.0.1`.*
+
+**Why:** the same lesson as the original finding. A normal LAN→LAN rule only sees traffic the
+gateway *forwards*. Traffic addressed *to* the gateway never passes through it, so even an
+exact-match IP and port rule is ignored. Only the special **Gateway Management Page**
+destination hooks traffic to the gateway itself. This rule and its group were deleted.
+
+### Attempt 3 — "Gateway Management Page", TCP only ✅
+
+The admin page uses **TCP**; what Attempt 1 broke was DNS (mostly **UDP**) and ping
+(**ICMP**). So: keep the special destination, restrict it to TCP.
+
+![Rule 5 configuration: Enabled, LAN to LAN, Deny, TCP only, IoT-Net to Gateway Management Page, with Omada's help text](../screenshots/05-rule5-tcp-config.png)
+
+*Final Rule 5 — `Block IoT to Gateway Management`: LAN→LAN, Deny, **TCP only**, `IoT-Net` →
+Gateway Management Page.*
+
+![Final Gateway ACL list: Rules 1-4 LAN to LAN deny all protocols between VLANs, Rule 5 Block IoT to Gateway Management with TCP only](../screenshots/05-acl-final.png)
+
+*The final rule set: four inter-VLAN denies (all protocols) plus Rule 5, scoped to TCP. The
+Attempt 2 rule and its IP-Port Group are gone.*
+
+### Re-test — both directions
+
+**Legitimate traffic still works** (the regression check Attempt 1 skipped):
+
+![On RedLeader_IoT: nslookup google.com answered by 192.168.20.1, ping 192.168.20.1 replies with 0% loss](../screenshots/05-rule5-tcp-dns-ok.png)
+
+*DNS answered by `192.168.20.1`; gateway ping replies. The Bambu printer stays connected and
+accepts print jobs.*
+
+**The admin page is still blocked:**
 
 ![Browser on RedLeader_IoT: 192.168.20.1 took too long to respond, ERR_CONNECTION_TIMED_OUT](../screenshots/05-iot-gateway-login-after.png)
 
-*After the fix — the gateway's management page is unreachable from IoT, even on IoT's own
-gateway address.*
+*`https://192.168.20.1` — IoT's own gateway address — times out, as does `https://192.168.0.1`.*
 
-**Status: ✅ fixed.** The gateway may still answer ping from IoT — that's expected and fine.
-IoT devices need the gateway for DHCP, DNS and internet routing; the goal was to stop them
-*managing* it, not reaching it.
+**Status: ✅ fixed.**
+
+**Known trade-off:** the rule blocks *all* TCP to the gateway from IoT, not only ports
+80/443. DNS normally uses UDP but can fall back to TCP for very large responses; those rare
+lookups would fail from IoT. Accepted — no IoT device has shown a problem, and the alternative
+(Attempt 2) doesn't block anything.
 
 ### Lessons
 
 - **Pinging a gateway address is a misleading isolation test.** Test against a real host on
   the far side, with a baseline from the trusted side.
 - **Inter-VLAN rules don't protect the router itself.** Traffic *to* the gateway needs its own
-  controls, separate from traffic *through* it.
+  controls, separate from traffic *through* it — and in Omada, only the dedicated
+  Gateway Management Page destination reaches it.
+- **Test that a security fix doesn't break legitimate traffic, not just that it blocks the bad
+  traffic.** Attempt 1 passed every "blocked" test and still broke a real device.
+- **Confirm which network you're testing from.** One round of tests here was accidentally run
+  from Main; checking the DNS server in `nslookup` output (`192.168.0.1` vs `192.168.20.1`)
+  caught it before it became a false conclusion.
 
 ---
 
@@ -145,7 +212,10 @@ IoT devices need the gateway for DHCP, DNS and internet routing; the goal was to
 - **Routed vs. to-the-device traffic** — LAN→LAN rules filter traffic *through* the gateway,
   not traffic addressed *to* it; management-plane access needs its own rule
 - **TTL as a clue** — a reply at TTL=64 came straight from the device, not across a router hop
-- **Testing method** — every "blocked" result needs a baseline proving the target responds
+- **Testing method** — every "blocked" result needs a baseline proving the target responds,
+  and every fix needs a regression check proving normal traffic still flows
+- **Protocol-level scoping** — DNS (UDP), ping (ICMP) and web admin (TCP) can be separated by
+  protocol even when they share a destination
 - **Stateful firewalling** — return traffic for established sessions is auto-permitted,
   enabling one-way trust with deny rules alone
 - **Service discovery protocols** — mDNS/Bonjour vs. SSDP/DIAL, and why multicast discovery

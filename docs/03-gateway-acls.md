@@ -34,10 +34,12 @@ All rules: **Direction:** LAN→LAN · **Policy:** Deny · **Protocol:** All
 | 2 | Block IoT to Guest | IoT-Net | Guest-Net (192.168.30.0/24) |
 | 3 | Block Guest to Main | Guest-Net | Main-Net |
 | 4 | Block Guest to IoT | Guest-Net | IoT-Net |
-| 5 | Block IoT to Gateway Management | IoT-Net | Gateway Management Page |
+| 5 | Block IoT to Gateway Management | IoT-Net | Gateway Management Page — **TCP only** |
 
 > **Rule 5 was added after validation.** Rules 1–4 block traffic routed *between* VLANs, but
-> testing showed IoT could still reach the gateway's own admin page. See the
+> testing showed IoT could still reach the gateway's own admin page. Rule 5 is the exception to
+> "Protocol: All": with all protocols it also blocked DNS and ping to the gateway and broke a
+> real IoT device, so it's scoped to TCP. See the
 > [Phase 5 finding](05-validation.md#finding--iot-could-reach-the-gateway-itself-fixed).
 
 ![Omada Gateway ACL list showing the four enabled LAN-to-LAN deny rules](../screenshots/03-gateway-acl-rules.png)

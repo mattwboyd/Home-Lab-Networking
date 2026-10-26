@@ -17,8 +17,14 @@ The verification shots (Phase 5) matter most.
 | `05-iot-blocked.png` ✅ | Same Roku ping from IoT (192.168.20.113) — 100% loss | Phase 5 |
 | `05-iot-gateway-reachable.png` ✅ | Finding — gateway's 0.1 / 30.1 addresses reply from IoT | Phase 5 |
 | `05-iot-gateway-login-before.png` ✅ | Before fix — ER605 login page loads from IoT (profile picture blurred) | Phase 5 |
-| `05-acl-rule5-gateway-mgmt.png` ✅ | Gateway ACL list with Rule 5 (IoT → Gateway Management Page) | Phase 5 |
-| `05-iot-gateway-login-after.png` ✅ | After fix — 192.168.20.1 management page times out from IoT | Phase 5 |
+| `05-acl-rule5-gateway-mgmt.png` ✅ | Attempt 1 — Rule 5 with all protocols | Phase 5 |
+| `05-rule5-dns-blocked.png` ✅ | Diagnosis — DNS via gateway times out, via 8.8.8.8 works | Phase 5 |
+| `05-rule6-attempt-config.png` ✅ | Attempt 2 — IP-Port Group rule config | Phase 5 |
+| `05-rule6-attempt-login-loads.png` ✅ | Attempt 2 — login page still loads from IoT | Phase 5 |
+| `05-rule5-tcp-config.png` ✅ | Attempt 3 — final Rule 5, TCP only | Phase 5 |
+| `05-rule5-tcp-dns-ok.png` ✅ | Regression check — DNS and gateway ping work from IoT | Phase 5 |
+| `05-iot-gateway-login-after.png` ✅ | After final fix — 192.168.20.1 management page times out from IoT | Phase 5 |
+| `05-acl-final.png` ✅ | Final Gateway ACL list (Rules 1–5) | Phase 5 |
 | `05-guest-blocked.png` ✅ | Guest device failing to reach Main/IoT | Phase 5 |
 
 **Tips**
